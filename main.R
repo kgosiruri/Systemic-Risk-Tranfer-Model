@@ -26,8 +26,7 @@ source("R/plotting.R")
 
 raw_data <- retrieve_risk_data(
   start_date = START_DATE,
-  end_date = END_DATE,
-  gpr_file = GPR_FILE
+  end_date = END_DATE
 )
 
 wti_fred   <- raw_data$wti_fred
@@ -50,8 +49,9 @@ risk_data <- build_monthly_risk_dataset(
 
 model_data <- create_model_returns(risk_data)
 
-write.csv(risk_data, file.path(PROCESSED_DIR, "risk_data.csv"), row.names = FALSE)
-write.csv(model_data, file.path(PROCESSED_DIR, "model_data.csv"), row.names = FALSE)
+save_processed_data(risk_data, model_data)
+
+print(check_model_data(model_data))
 
 # ------------------------------------------------------------
 # 3. Prepare copula data
@@ -88,12 +88,17 @@ joint_sim_data <- simulate_copula_scenarios(
   seed = SEED
 )
 
-# Save sample only, not full 10m simulations
-write.csv(
-  head(joint_sim_data, 10000),
-  file.path(SIM_DATA_DIR, "joint_sim_data_sample.csv"),
-  row.names = FALSE
-)
+save_simulation_sample <- function(joint_sim_data, n = 10000) {
+  if (!dir.exists(SIM_DATA_DIR)) {
+    dir.create(SIM_DATA_DIR, recursive = TRUE)
+  }
+  
+  write.csv(
+    head(joint_sim_data, n),
+    file.path(SIM_DATA_DIR, "joint_sim_data_sample.csv"),
+    row.names = FALSE
+  )
+}
 
 # ------------------------------------------------------------
 # 6. Build PCA systemic risk index
@@ -267,6 +272,27 @@ write.csv(
   row.names = FALSE
 )
 
+basis_compare_summary <- basis_compare %>%
+  group_by(Structure) %>%
+  summarise(
+    Mean_Basis_Risk = mean(Basis_Risk, na.rm = TRUE),
+    Mean_Absolute_Basis_Risk = mean(abs(Basis_Risk), na.rm = TRUE),
+    RMSE_Basis_Risk = sqrt(mean(Basis_Risk^2, na.rm = TRUE)),
+    Probability_Underpayment = mean(Basis_Risk > 0, na.rm = TRUE),
+    Average_Underpayment = mean(Basis_Risk[Basis_Risk > 0], na.rm = TRUE),
+    VaR_95_Basis_Risk = quantile(Basis_Risk, 0.95, na.rm = TRUE),
+    VaR_99_Basis_Risk = quantile(Basis_Risk, 0.99, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(basis_compare_summary)
+
+write.csv(
+  basis_compare_summary,
+  file.path(TABLES_DIR, "basis_compare_summary.csv"),
+  row.names = FALSE
+)
+
 # ------------------------------------------------------------
 # 11. EVT tail model
 # ------------------------------------------------------------
@@ -334,20 +360,19 @@ write.csv(
   file.path(TABLES_DIR, "sensitivity_results.csv"),
   row.names = FALSE
 )
-
-# ------------------------------------------------------------
+# ============================================================
 # 13. Prepare plotting datasets
-# ------------------------------------------------------------
+# ============================================================
 
 systemic_plot_data <- joint_sim_data %>%
-  mutate(
+  dplyr::mutate(
     Systemic_Payout = General_Payout,
     Triggered = Systemic_Payout > 0,
     Full_Payout = Systemic_Payout >= LIMIT
   )
 
 risk_factor_long <- model_data %>%
-  pivot_longer(
+  tidyr::pivot_longer(
     cols = -Date,
     names_to = "Risk_Factor",
     values_to = "Value"
@@ -356,7 +381,7 @@ risk_factor_long <- model_data %>%
 cor_matrix <- cor(copula_data, use = "complete.obs")
 
 cor_data <- as.data.frame(as.table(cor_matrix)) %>%
-  rename(
+  dplyr::rename(
     Factor_1 = Var1,
     Factor_2 = Var2,
     Correlation = Freq
@@ -365,24 +390,34 @@ cor_data <- as.data.frame(as.table(cor_matrix)) %>%
 set.seed(SEED)
 
 scatter_sample <- systemic_plot_data %>%
-  slice_sample(n = min(50000, nrow(systemic_plot_data)))
+  dplyr::slice_sample(n = min(50000, nrow(systemic_plot_data)))
 
 score_long <- systemic_plot_data %>%
-  select(WTI_Score, Brent_Score, USD_Score, Inflation_Score, GPR_Score) %>%
-  slice_sample(n = min(50000, nrow(systemic_plot_data))) %>%
-  pivot_longer(
-    cols = everything(),
+  dplyr::select(
+    WTI_Score,
+    Brent_Score,
+    USD_Score,
+    Inflation_Score,
+    GPR_Score
+  ) %>%
+  dplyr::slice_sample(n = min(50000, nrow(systemic_plot_data))) %>%
+  tidyr::pivot_longer(
+    cols = dplyr::everything(),
     names_to = "Score",
     values_to = "Value"
   )
 
 trigger_data <- systemic_plot_data %>%
-  count(Triggered) %>%
-  mutate(Status = ifelse(Triggered, "Triggered", "Not Triggered"))
+  dplyr::count(Triggered) %>%
+  dplyr::mutate(
+    Status = ifelse(Triggered, "Triggered", "Not Triggered")
+  )
 
 full_payout_data <- systemic_plot_data %>%
-  count(Full_Payout) %>%
-  mutate(Status = ifelse(Full_Payout, "Full Payout", "Not Full Payout"))
+  dplyr::count(Full_Payout) %>%
+  dplyr::mutate(
+    Status = ifelse(Full_Payout, "Full Payout", "Not Full Payout")
+  )
 
 curve_data <- build_payout_curve_data(
   attachment = attachment_systemic,
@@ -390,9 +425,9 @@ curve_data <- build_payout_curve_data(
   limit = LIMIT
 )
 
-# ------------------------------------------------------------
+# ============================================================
 # 14. Generate and save plots
-# ------------------------------------------------------------
+# ============================================================
 
 p_wti <- plot_wti_price(risk_data)
 save_plot(p_wti, "wti_price.png", 10, 5)
@@ -405,6 +440,36 @@ save_plot(p_returns, "risk_factor_returns.png", 12, 5)
 
 p_corr <- plot_correlation_heatmap(cor_data)
 save_plot(p_corr, "correlation_heatmap.png", 12, 5)
+
+p_copula_wti_usd <- plot_copula_density(
+  scatter_sample = scatter_sample,
+  xvar = "WTI_Return",
+  yvar = "USD_Return",
+  title = "WTI vs USD",
+  xlab = "WTI Return",
+  ylab = "USD Return"
+)
+save_plot(p_copula_wti_usd, "copula_wti_usd.png", 10, 6)
+
+p_copula_wti_cpi <- plot_copula_density(
+  scatter_sample = scatter_sample,
+  xvar = "WTI_Return",
+  yvar = "CPI_Inflation",
+  title = "WTI vs CPI",
+  xlab = "WTI Return",
+  ylab = "CPI Inflation"
+)
+save_plot(p_copula_wti_cpi, "copula_wti_cpi.png", 10, 6)
+
+p_copula_wti_gpr <- plot_copula_density(
+  scatter_sample = scatter_sample,
+  xvar = "WTI_Return",
+  yvar = "GPR_Change",
+  title = "WTI vs GPR",
+  xlab = "WTI Return",
+  ylab = "GPR Change"
+)
+save_plot(p_copula_wti_gpr, "copula_wti_gpr.png", 10, 6)
 
 p_systemic <- plot_systemic_index(
   systemic_plot_data = systemic_plot_data,
@@ -444,6 +509,9 @@ p_payout_curve <- plot_payout_curve(
 )
 save_plot(p_payout_curve, "payout_curve_comparison.png", 12, 5)
 
+p_payout_dist <- plot_payout_distribution_by_structure(joint_sim_data)
+save_plot(p_payout_dist, "payout_distribution_by_structure.png", 12, 4)
+
 p_elr <- plot_expected_loss_ratio(payout_comparison)
 save_plot(p_elr, "expected_loss_ratio_by_structure.png", 12, 4)
 
@@ -468,8 +536,18 @@ save_plot(p_sensitivity, "sensitivity_spread_heatmap.png", 12, 4)
 p_evt <- plot_evt_exceedances(exceedance_data)
 save_plot(p_evt, "evt_exceedances.png", 12, 5)
 
+p_basis_compare_dist
+save_plot(p_basis_compare_dist, "basis_risk_by_structure.png", 12, 5)
+
+p_basis_bar
+save_plot(p_basis_bar, "basis_risk_metrics_by_structure.png", 12, 5)
+
+p_underpayment
+save_plot(p_underpayment, "underpayment_probability_by_structure.png", 12, 5)
+
+
 # ------------------------------------------------------------
-# 15. Print key plots to viewer
+# Print selected plots to viewer
 # ------------------------------------------------------------
 
 p_wti
