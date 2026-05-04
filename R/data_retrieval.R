@@ -4,7 +4,8 @@ wti <- getSymbols(
   "DCOILWTICO",
   src = "FRED",
   auto.assign = FALSE
-)# WTI crude oil price
+)
+# WTI crude oil price
 getSymbols("DCOILWTICO", src = "FRED", from = start_date, to = end_date)
 
 # U.S. CPI index
