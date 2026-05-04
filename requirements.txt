@@ -1,0 +1,12 @@
+quantmod
+dplyr
+lubridate
+readxl
+zoo
+copula
+Matrix
+ggplot2
+tidyr
+scales
+httr
+curl
