@@ -50,7 +50,7 @@ START_DATE <- "1987-01-01"
 END_DATE   <- Sys.Date()
 
 # Simulation
-N_SIM <- 100000000
+N_SIM <- 10000000
 SEED  <- 123
 
 joint_sim_data <- c()
