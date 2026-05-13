@@ -9,7 +9,14 @@ prepare_copula_data <- function(model_data) {
     "Brent_Return",
     "USD_Return",
     "CPI_Inflation",
-    "GPR_Change"
+    "GPR_Change",
+    "Freight_Rate_Change",
+    "FRO_Change",
+    "STNG_Change",
+    "DHT_Change",
+    "INSW_Change",
+    "CAD_Change",
+    "BRL_Change"
   )
   
   missing_cols <- setdiff(required_cols, names(model_data))

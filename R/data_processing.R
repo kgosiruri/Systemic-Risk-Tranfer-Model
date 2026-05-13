@@ -24,7 +24,14 @@ build_monthly_risk_dataset <- function(wti_fred,
                                        brent_fred,
                                        cpi_fred,
                                        usd_fred,
-                                       gpr) {
+                                       gpr,
+                                       freight_fred,
+                                       fro_df,
+                                      stng_df,
+                                      dht_df,
+                                      insw_df,
+                                      cad_df,
+                                      brl_df) {
   
   wti_monthly <- wti_fred %>%
     dplyr::mutate(Date = lubridate::floor_date(Date, "month")) %>%
@@ -65,19 +72,89 @@ build_monthly_risk_dataset <- function(wti_fred,
       GPR = last_non_na(GPR),
       .groups = "drop"
     )
-  
+
+  freight_fred <- freight_fred %>%
+    dplyr::mutate(Date = lubridate::floor_date(Date, "month")) %>%
+    dplyr::group_by(Date) %>%
+    dplyr::summarise(
+      Freight_Rate = last_non_na(Freight_Rate),
+      .groups = "drop"
+    )
+
+fro_df <- fro_df %>%
+  dplyr::mutate(Date = lubridate::floor_date(Date, "month")) %>%
+  dplyr::group_by(Date) %>%
+  dplyr::summarise(
+    FRO = last_non_na(Shipping_FRO),
+    .groups = "drop"
+  )
+
+stng_df <- stng_df %>%
+  dplyr::mutate(Date = lubridate::floor_date(Date, "month")) %>%
+  dplyr::group_by(Date) %>%
+  dplyr::summarise(
+    STNG = last_non_na(Shipping_STNG),
+    .groups = "drop"
+  )
+
+dht_df <- dht_df %>%
+  dplyr::mutate(Date = lubridate::floor_date(Date, "month")) %>%
+  dplyr::group_by(Date) %>%
+  dplyr::summarise(
+    DHT = last_non_na(Shipping_DHT),
+    .groups = "drop"
+  )
+
+insw_df <- insw_df %>%
+  dplyr::mutate(Date = lubridate::floor_date(Date, "month")) %>%
+  dplyr::group_by(Date) %>%
+  dplyr::summarise(
+    INSW = last_non_na(Shipping_INSW),
+    .groups = "drop"
+  )
+
+cad_df <- cad_df %>%
+  dplyr::mutate(Date = lubridate::floor_date(Date, "month")) %>%
+  dplyr::group_by(Date) %>%
+  dplyr::summarise(
+    CAD = last_non_na(FX_Canada),
+    .groups = "drop"
+  )
+
+brl_df <- brl_df %>%
+  dplyr::mutate(Date = lubridate::floor_date(Date, "month")) %>%
+  dplyr::group_by(Date) %>%
+  dplyr::summarise(
+    BRL = last_non_na(FX_Brazil),
+    .groups = "drop"
+  )
+
   risk_data <- wti_monthly %>%
     dplyr::full_join(brent_monthly, by = "Date") %>%
     dplyr::full_join(cpi_monthly, by = "Date") %>%
     dplyr::full_join(usd_monthly, by = "Date") %>%
     dplyr::full_join(gpr_monthly, by = "Date") %>%
+    dplyr::full_join(freight_fred, by = "Date") %>%
+    dplyr::full_join(fro_df, by = "Date") %>%
+    dplyr::full_join(stng_df, by = "Date") %>%
+    dplyr::full_join(dht_df, by = "Date") %>%
+    dplyr::full_join(insw_df, by = "Date") %>%
+    dplyr::full_join(cad_df, by = "Date") %>%
+    dplyr::full_join(brl_df, by = "Date") %>%
     dplyr::arrange(Date) %>%
     dplyr::mutate(
       WTI = zoo::na.locf(WTI, na.rm = FALSE),
       Brent = zoo::na.locf(Brent, na.rm = FALSE),
       CPI = zoo::na.locf(CPI, na.rm = FALSE),
       USD_Index = zoo::na.locf(USD_Index, na.rm = FALSE),
-      GPR = zoo::na.locf(GPR, na.rm = FALSE)
+      GPR = zoo::na.locf(GPR, na.rm = FALSE),
+      Freight_Rate = zoo::na.locf(Freight_Rate, na.rm = FALSE),
+      FRO = zoo::na.locf(FRO, na.rm = FALSE),
+      STNG = zoo::na.locf(STNG, na.rm = FALSE),
+      DHT = zoo::na.locf(DHT, na.rm = FALSE),
+      INSW = zoo::na.locf(INSW, na.rm = FALSE),
+      CAD = zoo::na.locf(CAD, na.rm = FALSE),
+      BRL = zoo::na.locf(BRL, na.rm = FALSE)
     ) %>%
     dplyr::filter(stats::complete.cases(.))
   
@@ -97,7 +174,15 @@ create_model_returns <- function(risk_data) {
       Brent_Return = log(Brent / dplyr::lag(Brent)),
       USD_Return = log(USD_Index / dplyr::lag(USD_Index)),
       CPI_Inflation = log(CPI / dplyr::lag(CPI)),
-      GPR_Change = log(GPR / dplyr::lag(GPR))
+      GPR_Change = log(GPR / dplyr::lag(GPR)),
+      Freight_Rate_Change = log(Freight_Rate / dplyr::lag(Freight_Rate)),
+      FRO_Change = log(FRO / dplyr::lag(FRO)),
+      STNG_Change = log(STNG / dplyr::lag(STNG)),
+      DHT_Change = log(DHT / dplyr::lag(DHT)),
+      INSW_Change = log(INSW / dplyr::lag(INSW)),
+      CAD_Change = log(CAD / dplyr::lag(CAD)),
+      BRL_Change = log(BRL / dplyr::lag(BRL))
+
     ) %>%
     dplyr::select(
       Date,
@@ -105,7 +190,14 @@ create_model_returns <- function(risk_data) {
       Brent_Return,
       USD_Return,
       CPI_Inflation,
-      GPR_Change
+      GPR_Change,
+      Freight_Rate_Change,
+      FRO_Change,
+      STNG_Change,
+      DHT_Change,
+      INSW_Change,
+      CAD_Change,
+      BRL_Change
     ) %>%
     dplyr::filter(dplyr::if_all(-Date, ~ is.finite(.))) %>%
     tidyr::drop_na()

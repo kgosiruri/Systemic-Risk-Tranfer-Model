@@ -49,14 +49,18 @@ dir.create(FIG_REPORT_DIR, recursive = TRUE, showWarnings = FALSE)
 START_DATE <- "1987-01-01"
 END_DATE   <- Sys.Date()
 
+# Something wrong in the code with the dates will check and fix later
+start_date <- "1987-01-01"
+end_date   <- Sys.Date()
+
 # Simulation
-N_SIM <- 10000000
+N_SIM <- 100000
 SEED  <- 123
 
 joint_sim_data <- c()
 
 # Copula
-COPULA_DF_START <- 6
+COPULA_DF_START <- 5
 EPSILON <- 1e-6
 
 # ILS structure

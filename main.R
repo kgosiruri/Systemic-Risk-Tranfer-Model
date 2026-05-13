@@ -18,7 +18,7 @@ source("R/pricing_summary.R")
 source("R/basis_risk.R")
 source("R/evt_tail_model.R")
 source("R/stress_scenarios.R")
-source("R/plotting.R")
+
 
 # ------------------------------------------------------------
 # 1. Retrieve / import raw data
@@ -34,6 +34,13 @@ brent_fred <- raw_data$brent_fred
 cpi_fred   <- raw_data$cpi_fred
 usd_fred   <- raw_data$usd_fred
 gpr        <- raw_data$gpr
+freight_fred <- raw_data$freight_fred
+fro_df <- raw_data$fro_df
+stng_df <- raw_data$stng_df
+dht_df <- raw_data$dht_df
+insw_df <- raw_data$insw_df
+cad_df <- raw_data$cad_df
+brl_df <- raw_data$brl_df
 
 # ------------------------------------------------------------
 # 2. Process and merge monthly risk factors
@@ -44,7 +51,15 @@ risk_data <- build_monthly_risk_dataset(
   brent_fred = brent_fred,
   cpi_fred = cpi_fred,
   usd_fred = usd_fred,
-  gpr = gpr
+  gpr = gpr,
+  freight_fred = freight_fred,
+  fro_df = fro_df,
+  stng_df = stng_df,
+  dht_df = dht_df,
+  insw_df = insw_df,
+  cad_df = cad_df,
+  brl_df = brl_df
+
 )
 
 model_data <- create_model_returns(risk_data)
@@ -188,7 +203,7 @@ persistence_payouts <- calc_ils_payout(
   A = attachment_systemic,
   L = LIMIT,
   alpha = alpha_systemic,
-  d = 3,
+  d = 4, # Assuming quarterly data and 1 year duration
   n = 1
 )
 
@@ -266,6 +281,36 @@ basis_risk_summary <- basis_results$basis_risk_summary
 
 print(basis_risk_summary)
 
+basis_compare <- joint_sim_data %>%
+  mutate(
+    General_Basis_Risk = Sponsor_Loss - General_Payout,
+    Binary_Basis_Risk = Sponsor_Loss - Binary_Payout,
+    Linear_Excess_Basis_Risk = Sponsor_Loss - Linear_Excess_Payout,
+    Persistence_Basis_Risk = Sponsor_Loss - Persistence_Payout
+  ) %>%
+  select(
+    Systemic_Index,
+    Sponsor_Loss,
+    General_Basis_Risk,
+    Binary_Basis_Risk,
+    Linear_Excess_Basis_Risk,
+    Persistence_Basis_Risk
+  ) %>%
+  pivot_longer(
+    cols = ends_with("Basis_Risk"),
+    names_to = "Structure",
+    values_to = "Basis_Risk"
+  ) %>%
+  mutate(
+    Structure = recode(
+      Structure,
+      "General_Basis_Risk" = "General Kernel",
+      "Binary_Basis_Risk" = "Binary Trigger",
+      "Linear_Excess_Basis_Risk" = "Linear Excess",
+      "Persistence_Basis_Risk" = "Persistence Adjusted"
+    )
+  )
+
 write.csv(
   basis_risk_summary,
   file.path(TABLES_DIR, "basis_risk_summary.csv"),
@@ -282,7 +327,7 @@ basis_compare_summary <- basis_compare %>%
     Average_Underpayment = mean(Basis_Risk[Basis_Risk > 0], na.rm = TRUE),
     VaR_95_Basis_Risk = quantile(Basis_Risk, 0.95, na.rm = TRUE),
     VaR_99_Basis_Risk = quantile(Basis_Risk, 0.99, na.rm = TRUE),
-    .groups = "drop"
+    groups = "drop"
   )
 
 print(basis_compare_summary)
@@ -292,6 +337,19 @@ write.csv(
   file.path(TABLES_DIR, "basis_compare_summary.csv"),
   row.names = FALSE
 )
+
+basis_risk_data <- basis_compare %>%
+  group_by(Structure) %>%
+  summarise(
+    Mean_Basis_Risk = mean(Basis_Risk, na.rm = TRUE),
+    Mean_Absolute_Basis_Risk = mean(abs(Basis_Risk), na.rm = TRUE),
+    RMSE_Basis_Risk = sqrt(mean(Basis_Risk^2, na.rm = TRUE)),
+    Probability_Underpayment = mean(Basis_Risk > 0, na.rm = TRUE),
+    Average_Underpayment = mean(Basis_Risk[Basis_Risk > 0], na.rm = TRUE),
+    VaR_95_Basis_Risk = quantile(Basis_Risk, 0.95, na.rm = TRUE),
+    VaR_99_Basis_Risk = quantile(Basis_Risk, 0.99, na.rm = TRUE),
+    groups = "drop"
+  )
 
 # ------------------------------------------------------------
 # 11. EVT tail model
@@ -363,6 +421,7 @@ write.csv(
 # ============================================================
 # 13. Prepare plotting datasets
 # ============================================================
+source("R/plotting.R")
 
 systemic_plot_data <- joint_sim_data %>%
   dplyr::mutate(
@@ -425,6 +484,18 @@ curve_data <- build_payout_curve_data(
   limit = LIMIT
 )
 
+persistance_surface_data <- build_persistence_surface_data(
+  joint_sim_data = joint_sim_data,
+  attachment = attachment_systemic,
+  exhaustion = exhaustion_systemic,
+  limit = LIMIT
+)
+basis_risk_data <- basis_compare %>%
+  dplyr::filter(Structure == "General Kernel") %>%
+  dplyr::select(Systemic_Index, Sponsor_Loss, Basis_Risk) %>%
+  dplyr::rename(Basis_Risk = Basis_Risk) %>%
+  dplyr::mutate(Basis_Risk = ifelse(is.na(Basis_Risk), 0, Basis_Risk))
+
 # ============================================================
 # 14. Generate and save plots
 # ============================================================
@@ -436,7 +507,7 @@ p_gpr <- plot_gpr_index(risk_data)
 save_plot(p_gpr, "gpr_index.png", 10, 5)
 
 p_returns <- plot_risk_factor_returns(risk_factor_long)
-save_plot(p_returns, "risk_factor_returns.png", 12, 5)
+save_plot(p_returns, "risk_factor_returns.png", 16, 10)
 
 p_corr <- plot_correlation_heatmap(cor_data)
 save_plot(p_corr, "correlation_heatmap.png", 12, 5)
@@ -536,16 +607,20 @@ save_plot(p_sensitivity, "sensitivity_spread_heatmap.png", 12, 4)
 p_evt <- plot_evt_exceedances(exceedance_data)
 save_plot(p_evt, "evt_exceedances.png", 12, 5)
 
-p_basis_compare_dist
-save_plot(p_basis_compare_dist, "basis_risk_by_structure.png", 12, 5)
+#p_basis_compare_dist <- plot_basis_risk_by_structure(joint_sim_data)
+#save_plot(p_basis_compare_dist, "basis_risk_by_structure.png", 12, 5)
 
-p_basis_bar
-save_plot(p_basis_bar, "basis_risk_metrics_by_structure.png", 12, 5)
+#p_basis_bar <- plot_basis_risk_metrics(joint_sim_data)
+#save_plot(p_basis_bar, "basis_risk_metrics_by_structure.png", 12, 5)
 
-p_underpayment
-save_plot(p_underpayment, "underpayment_probability_by_structure.png", 12, 5)
+#p_underpayment <- plot_underpayment_probability(joint_sim_data)
+#save_plot(p_underpayment, "underpayment_probability_by_structure.png", 12, 5)
 
+#plot_systemic_index_vs_sponsor_loss <- plot_systemic_index_vs_sponsor_loss(basis_risk_data)
+#save_plot(plot_systemic_index_vs_sponsor_loss, "systemic_index_vs_sponsor_loss.png", 12, 6)
 
+#plot_3d_persistance_surface <- plot_3d_persistence_surface(persistence_surface_data)
+#save_plot(plot_3d_persistence_surface, "plot_3d_persistance.png")
 # ------------------------------------------------------------
 # Print selected plots to viewer
 # ------------------------------------------------------------

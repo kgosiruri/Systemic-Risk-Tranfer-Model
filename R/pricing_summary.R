@@ -144,3 +144,14 @@ build_efficiency_table <- function(joint_sim_data) {
     )
   )
 }
+
+build_persistence_surface_data <- function(joint_sim_data, attachment, exhaustion, limit) {
+  
+  joint_sim_data %>%
+    dplyr::mutate(
+      Attachment_Scaled = pmax(0, pmin(1, (Systemic_Index - attachment) / (exhaustion - attachment))),
+      Exhaustion_Scaled = pmax(0, pmin(1, (Systemic_Index - exhaustion) / (limit - exhaustion))),
+      Persistence_Adjustment = 1 + Attachment_Scaled * (1 - Exhaustion_Scaled)
+    ) %>%
+    dplyr::select(Systemic_Index, Persistence_Adjustment)
+}

@@ -3,6 +3,9 @@
 # Systemic Risk Transfer via ILS
 # ============================================================
 
+# Need to add 3d plot for persistence adjustment structure, and a plot showing the relationship between systemic index and sponsor loss to illustrate basis risk.
+# and how alpha adjustment can mitigate basis risk by reducing underpayment probability.
+
 # ------------------------------------------------------------
 # Theme and save helper
 # ------------------------------------------------------------
@@ -609,6 +612,36 @@ plot_evt_exceedances <- function(exceedance_data) {
       subtitle = "Exceedances above the 95th percentile threshold of the systemic risk index.",
       x = "Exceedance Above Threshold",
       y = "Density"
+    ) +
+    theme_kes()
+}
+
+# New plots to add: 1. 3D surface plot of the persistence adjustment structure, showing how payout changes with systemic index and persistence score. 2. Scatter plot of systemic index vs sponsor loss, coloured by payout, to illustrate basis risk and how alpha adjustment can mitigate underpayment probability by reducing basis risk in the tail of the distribution.
+
+plot_3d_persistence_surface <- function(persistence_surface_data) {
+  ggplot(persistence_surface_data, aes(x = Systemic_Index, y = Persistence_Score, z = Payout)) +
+    geom_tile(aes(fill = Payout)) +
+    scale_fill_viridis_c(option = "magma") +
+    labs(
+      title = "3D Surface of Persistence Adjustment Payout",
+      subtitle = "Payout varies with both systemic index and persistence score.",
+      x = "Systemic Risk Index",
+      y = "Persistence Score",
+      fill = "Payout"
+    ) +
+    theme_kes()
+}
+
+plot_systemic_index_vs_sponsor_loss <- function(basis_risk_data) {
+  ggplot(basis_risk_data, aes(x = Systemic_Index, y = Sponsor_Loss, colour = ILS_Payout)) +
+    geom_point(alpha = 0.6) +
+    scale_colour_viridis_c(option = "magma") +
+    labs(
+      title = "Systemic Risk Index vs Sponsor Loss",
+      subtitle = "Points coloured by ILS payout to illustrate basis risk and underpayment mitigation.",
+      x = "Systemic Risk Index",
+      y = "Sponsor Loss",
+      colour = "ILS Payout"
     ) +
     theme_kes()
 }

@@ -6,9 +6,9 @@ retrieve_risk_data <- function(start_date, end_date) {
   
   options(download.file.method = "libcurl")
   
-  # ------------------------------------------------------------
-  # 1. Download FRED data
-  # ------------------------------------------------------------
+# ------------------------------------------------------------
+# 1. Download FRED data
+# ------------------------------------------------------------
   
   DCOILWTICO <- quantmod::getSymbols(
     "DCOILWTICO",
@@ -41,52 +41,154 @@ retrieve_risk_data <- function(start_date, end_date) {
     to = end_date,
     auto.assign = FALSE
   )
+
+# New FRED series for freight rates added this 13 May 2026 should improve the GPR model's performance by providing a more direct measure of global trade conditions, which are a key driver of geopolitical risk.
+TSIFRGHT <- quantmod::getSymbols(
+  "TSIFRGHT",
+  src = "FRED",
+  from = start_date,
+  to = end_date,
+  auto.assign = FALSE
+)
+
+
+# ------------------------------------------------------------
+# 1.3. Fetch Shipping Companies (Yahoo Finance - Daily)
+# ------------------------------------------------------------
+# Frontline (FRO), Scorpio (STNG), DHT Holdings (DHT), International Seaways (INSW)
+
+# Note: auto.assign = FALSE requires pulling tickers individually
+
+fro_stock <- quantmod::getSymbols(
+  "FRO",
+  src = "yahoo", 
+  from = start_date, 
+  to = end_date, 
+  auto.assign = FALSE)
+
+stng_stock <- quantmod::getSymbols(
+  "STNG", 
+  src = "yahoo", 
+  from = start_date, 
+  to = end_date, 
+  auto.assign = FALSE)
+dht_stock <- quantmod::getSymbols(
+  "DHT", 
+  src = "yahoo", 
+  from = start_date, 
+  to = end_date, 
+  auto.assign = FALSE)
+
+insw_stock <- quantmod::getSymbols(
+  "INSW", 
+  src = "yahoo", 
+  from = start_date, 
+  to = end_date, 
+  auto.assign = FALSE)
+
+# ------------------------------------------------------------
+# 1.4 Fetch Oil Producer Exchange Rates (FRED - Monthly/Daily)
+# ------------------------------------------------------------
+# Canada Dollar to USD (DEXCAUS - Daily)
+cad_fx <- quantmod::getSymbols("DEXCAUS", 
+src = "FRED", 
+from = start_date, 
+to = end_date, 
+auto.assign = FALSE)
   
-  # ------------------------------------------------------------
-  # 2. Convert FRED series to data frames
-  # ------------------------------------------------------------
-  
-  wti_fred <- data.frame(
-    Date = zoo::index(DCOILWTICO),
-    WTI = as.numeric(DCOILWTICO$DCOILWTICO)
+# Brazil Real to USD (DEXBZUS - Daily)
+brl_fx <- quantmod::getSymbols("DEXBZUS", 
+src = "FRED", 
+from = start_date, 
+to = end_date, 
+auto.assign = FALSE)
+
+# ------------------------------------------------------------
+# 3. Convert New Series to Data Frames (Matching your format)
+# ------------------------------------------------------------
+# Shipping Stocks (Using Adjusted Close prices to account for dividends/splits)
+fro_df <- data.frame(
+    Date = zoo::index(fro_stock),
+    Shipping_FRO = as.numeric(quantmod::Ad(fro_stock))
   )
-  
-  brent_fred <- data.frame(
-    Date = zoo::index(DCOILBRENTEU),
-    Brent = as.numeric(DCOILBRENTEU$DCOILBRENTEU)
+
+stng_df <- data.frame(
+    Date = zoo::index(stng_stock),
+    Shipping_STNG = as.numeric(quantmod::Ad(stng_stock))
   )
+
+dht_df <- data.frame(
+  Date = zoo::index(dht_stock),
+  Shipping_DHT = as.numeric(quantmod::Ad(dht_stock))
+)
+
+insw_df <- data.frame(
+  Date = zoo::index(insw_stock),
+  Shipping_INSW = as.numeric(quantmod::Ad(insw_stock))
+)
+
+# Producer Currency Exchange Rates
+cad_df <- data.frame(
+  Date = zoo::index(cad_fx),
+  FX_Canada = as.numeric(cad_fx$DEXCAUS)
+)
+
+brl_df <- data.frame(
+  Date = zoo::index(brl_fx),
+  FX_Brazil = as.numeric(brl_fx$DEXBZUS)
+)
+
+# ------------------------------------------------------------
+# 2. Convert FRED series to data frames
+# ------------------------------------------------------------
   
-  cpi_fred <- data.frame(
-    Date = zoo::index(CPIAUCSL),
-    CPI = as.numeric(CPIAUCSL$CPIAUCSL)
-  )
+wti_fred <- data.frame(
+  Date = zoo::index(DCOILWTICO),
+  WTI = as.numeric(DCOILWTICO$DCOILWTICO)
+)
   
-  usd_fred <- data.frame(
-    Date = zoo::index(DTWEXBGS),
-    USD_Index = as.numeric(DTWEXBGS$DTWEXBGS)
-  )
+brent_fred <- data.frame(
+  Date = zoo::index(DCOILBRENTEU),
+  Brent = as.numeric(DCOILBRENTEU$DCOILBRENTEU)
+)
   
-  # ------------------------------------------------------------
-  # 3. Download and import GPR data
-  # ------------------------------------------------------------
+cpi_fred <- data.frame(
+  Date = zoo::index(CPIAUCSL),
+  CPI = as.numeric(CPIAUCSL$CPIAUCSL)
+)
   
-  url <- "https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls"
-  dest <- tempfile(fileext = ".xls")
+usd_fred <- data.frame(
+  Date = zoo::index(DTWEXBGS),
+  USD_Index = as.numeric(DTWEXBGS$DTWEXBGS)
+)
+
+freight_fred <- data.frame(
+  Date = zoo::index(TSIFRGHT),
+  Freight_Rate = as.numeric(TSIFRGHT$TSIFRGHT)
+)
+
   
-  download.file(
-    url,
-    destfile = dest,
-    mode = "wb"
-  )
+# ------------------------------------------------------------
+# 3. Download and import GPR data
+# ------------------------------------------------------------
   
-  gpr_raw <- readxl::read_excel(dest)
+url <- "https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls"
+dest <- tempfile(fileext = ".xls")
   
-  gpr <- gpr_raw %>%
-    dplyr::transmute(
-      Date = as.Date(month),
-      GPR = as.numeric(GPRH_BASIC)
-    ) %>%
-    tidyr::drop_na()
+download.file(
+  url,
+  destfile = dest,
+  mode = "wb"
+)
+  
+gpr_raw <- readxl::read_excel(dest)
+
+gpr <- gpr_raw %>%
+  dplyr::transmute(
+    Date = as.Date(month),
+    GPR = as.numeric(GPRH_BASIC)
+  ) %>%
+  tidyr::drop_na()
   
   # ------------------------------------------------------------
   # 4. Return datasets
@@ -98,6 +200,13 @@ retrieve_risk_data <- function(start_date, end_date) {
     cpi_fred = cpi_fred,
     usd_fred = usd_fred,
     gpr_raw = gpr_raw,
-    gpr = gpr
+    gpr = gpr,
+    freight_fred = freight_fred,
+    fro_df = fro_df,
+    stng_df = stng_df,
+    dht_df = dht_df,
+    insw_df = insw_df,
+    cad_df = cad_df,
+    brl_df = brl_df
   )
 }
